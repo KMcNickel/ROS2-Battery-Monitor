@@ -11,7 +11,7 @@
 #include "rclcpp/timer.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
-#include "std_msgs/msg/int16.hpp"
+#include "std_msgs/msg/u_int16.hpp"
 
 #include "battery_monitor/rs232.h"
 
@@ -45,13 +45,15 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
 
             portNum = RS232_GetPortnr(portName.c_str());
 
+            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Using port: %s\n\tNumber: %d", portName.c_str(), portNum);
+
             if(portNum == -1)
             {
                 RCLCPP_FATAL(rclcpp::get_logger("on_configure"), "Unable to find serial port");
                 return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
             }
 
-            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Attempting to open port: %s\n\tNumber: %d", portName.c_str(), portNum);
+            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Attempting to open port");
             if(RS232_OpenComport(portNum, baudRate, portMode.c_str(), FLOW_CONTROL_ENABLED))
             {
                 RCLCPP_FATAL(rclcpp::get_logger("on_configure"), "Failed to open serial port");
@@ -128,8 +130,8 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
     private:
         void createInterfaces()
         {
-            SoCPublisher = this->create_publisher<std_msgs::msg::Int16>("battery/output/soc", 10);
-            voltagePublisher = this->create_publisher<std_msgs::msg::Int16>("battery/output/voltage", 10);
+            SoCPublisher = this->create_publisher<std_msgs::msg::UInt16>("battery/output/soc", 10);
+            voltagePublisher = this->create_publisher<std_msgs::msg::UInt16>("battery/output/voltage", 10);
         }
 
         void resetVariables()
@@ -147,34 +149,62 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
 
         void comPortTimerCallback()
         {
-            std_msgs::msg::Int16 voltageMsg, socMsg;
+            int idx;
+            unsigned char rxByte;
+            std_msgs::msg::UInt16 message;
 
-            count = RS232_PollComport(portNum, receiveBuffer + count, 1);
+            if(this->get_current_state().id() != 3)
+                return;
 
-            if(receiveBuffer[count] == START_BYTE)
-                count = 0;
-            if(count == 4)
+            idx = RS232_PollComport(portNum, &rxByte, 1);
+
+            if(idx <= 0)
+                return;
+
+            if(rxByte == START_BYTE)
+                stepNum = 0;
+            else if(stepNum != -1)
+                stepNum++;
+
+            RCLCPP_DEBUG(rclcpp::get_logger("comPortTimerCallback"), "Received data: %d - Step: %d", rxByte, stepNum);
+
+            switch(stepNum)
             {
-                voltageMsg.data = receiveBuffer[1] << 8 & receiveBuffer[2];
-                socMsg.data = receiveBuffer[3] << 8 & receiveBuffer[4];
-
-                SoCPublisher->publish(socMsg);
-                voltagePublisher->publish(voltageMsg);
-
-                count = 0;
+                case 0:
+                    break;
+                case 1:
+                    voltage = (uint16_t)rxByte << 8;
+                    break;
+                case 2:
+                    voltage = voltage | (uint16_t)rxByte;
+                    message.data = voltage;
+                    voltagePublisher->publish(message);
+                    break;
+                case 3:
+                    soc = (uint16_t)rxByte << 8;
+                    break;
+                case 4:
+                    soc = soc | (uint16_t)rxByte;
+                    message.data = soc;
+                    SoCPublisher->publish(message);
+                    RCLCPP_DEBUG(rclcpp::get_logger("comPortTimerCallback"), "Voltage: %d - SoC: %d", voltage, soc);
+                    break;
+                default:
+                    stepNum = -1;
+                    break;
             }
         }
 
         rclcpp::TimerBase::SharedPtr comPortPollTimer;
-        rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int16>::SharedPtr SoCPublisher;
-        rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int16>::SharedPtr voltagePublisher;
+        rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt16>::SharedPtr SoCPublisher;
+        rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt16>::SharedPtr voltagePublisher;
 
         std::string portName;
         int portNum;
         int baudRate;
         std::string portMode;
-        unsigned char receiveBuffer[5];
-        int count;
+        uint16_t voltage, soc;
+        int stepNum = -1;
 };
 
 int main(int argc, char * argv[])
