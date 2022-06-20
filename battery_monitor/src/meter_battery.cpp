@@ -12,14 +12,9 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
 #include "std_msgs/msg/u_int16.hpp"
+#include "can_interface/msg/can_frame.hpp"
 
-#include "battery_monitor/rs232.h"
-
-#define TX_BUFFER_SIZE 64
-#define RX_BUFFER_SIZE 512
-#define COM_PORT_POLL_TIMER_DURATION 100
-#define FLOW_CONTROL_ENABLED 0
-#define START_BYTE 0x1C
+using std::placeholders::_1;
 
 class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
 {
@@ -35,36 +30,13 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
         {
             RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Configuring...");
 
-            this->declare_parameter<std::string>("port_name");
-            this->declare_parameter<std::int32_t>("baud_rate", 115200);
-            this->declare_parameter<std::string>("port_mode", "8N1");
+            this->declare_parameter<std::int32_t>("canId", 1);
 
-            this->get_parameter("port_name", portName);
-            this->get_parameter("baud_rate", baudRate);
-            this->get_parameter("port_mode", portMode);
+            this->get_parameter("canId", canId);
 
-            portNum = RS232_GetPortnr(portName.c_str());
-
-            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Using port: %s\n\tNumber: %d", portName.c_str(), portNum);
-
-            if(portNum == -1)
-            {
-                RCLCPP_FATAL(rclcpp::get_logger("on_configure"), "Unable to find serial port");
-                return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
-            }
-
-            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Attempting to open port");
-            if(RS232_OpenComport(portNum, baudRate, portMode.c_str(), FLOW_CONTROL_ENABLED))
-            {
-                RCLCPP_FATAL(rclcpp::get_logger("on_configure"), "Failed to open serial port");
-                return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
-            }
-            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Successfully opened serial port");
+            RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Using Can Id: %d", canId);
 
             createInterfaces();
-
-            comPortPollTimer = rclcpp::create_timer(this, get_clock(), std::chrono::milliseconds(COM_PORT_POLL_TIMER_DURATION),
-                    std::bind(&BatteryMeter::comPortTimerCallback, this));
 
             RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Configuration Complete");
             return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
@@ -130,81 +102,62 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
     private:
         void createInterfaces()
         {
+            canDataSubscription = this->create_subscription<can_interface::msg::CanFrame>(
+                "battery/input/can", 50, std::bind(&BatteryMeter::canDataReceived, this, _1));
             SoCPublisher = this->create_publisher<std_msgs::msg::UInt16>("battery/output/soc", 10);
             voltagePublisher = this->create_publisher<std_msgs::msg::UInt16>("battery/output/voltage", 10);
         }
 
         void resetVariables()
         {
-            comPortPollTimer.reset();
+            canDataSubscription.reset();
             SoCPublisher.reset();
             voltagePublisher.reset();
-
-            if(portNum != -1)
-            {
-                RCLCPP_INFO(rclcpp::get_logger("resetVariables"), "Closing port");
-                RS232_CloseComport(portNum);
-            }
         }
 
-        void comPortTimerCallback()
+        enum messageTypes
         {
-            int idx;
-            unsigned char rxByte;
-            std_msgs::msg::UInt16 message;
+            BATTERY_CAN_MESSAGE_TYPE_NONE = 0,
+            BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV = 1,
+            BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT = 2
+        };
 
-            if(this->get_current_state().id() != 3)
-                return;
+        void canDataReceived(const can_interface::msg::CanFrame & message)
+        {
+            uint32_t messageType;
 
-            idx = RS232_PollComport(portNum, &rxByte, 1);
-
-            if(idx <= 0)
-                return;
-
-            if(rxByte == START_BYTE)
-                stepNum = 0;
-            else if(stepNum != -1)
-                stepNum++;
-
-            RCLCPP_DEBUG(rclcpp::get_logger("comPortTimerCallback"), "Received data: %d - Step: %d", rxByte, stepNum);
-
-            switch(stepNum)
+            if(this->get_current_state().id() != 3)     //3 is the "active" lifecycle state
             {
-                case 0:
+                RCLCPP_DEBUG(rclcpp::get_logger("canDataReceived"), "Ignoring data while in current state");
+                return;
+            }
+
+            if(message.can_id >> 5 != (uint32_t) canId)
+            {
+                RCLCPP_DEBUG(rclcpp::get_logger("canDataReceived"), "Ignoring data that is not for this node");
+                return;
+            }
+
+            messageType = message.can_id & 0b00011111;
+
+            switch((messageTypes) messageType)
+            {
+                case BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV:
                     break;
-                case 1:
-                    voltage = (uint16_t)rxByte << 8;
-                    break;
-                case 2:
-                    voltage = voltage | (uint16_t)rxByte;
-                    message.data = voltage;
-                    voltagePublisher->publish(message);
-                    break;
-                case 3:
-                    soc = (uint16_t)rxByte << 8;
-                    break;
-                case 4:
-                    soc = soc | (uint16_t)rxByte;
-                    message.data = soc;
-                    SoCPublisher->publish(message);
-                    RCLCPP_DEBUG(rclcpp::get_logger("comPortTimerCallback"), "Voltage: %d - SoC: %d", voltage, soc);
+                case BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT:
                     break;
                 default:
-                    stepNum = -1;
                     break;
             }
         }
 
-        rclcpp::TimerBase::SharedPtr comPortPollTimer;
+        rclcpp::Subscription<can_interface::msg::CanFrame>::SharedPtr canDataSubscription;
+
         rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt16>::SharedPtr SoCPublisher;
         rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt16>::SharedPtr voltagePublisher;
 
-        std::string portName;
-        int portNum;
-        int baudRate;
-        std::string portMode;
         uint16_t voltage, soc;
-        int stepNum = -1;
+        int32_t canId;
 };
 
 int main(int argc, char * argv[])

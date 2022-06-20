@@ -5,7 +5,8 @@
             "includePath": [
                 "/opt/ros/galactic/include/**",
                 "/usr/include/**",
-                "${workspaceFolder}/battery_monitor/include/**"
+                "${workspaceFolder}/battery_monitor/include/**",
+                "/home/kyle/dev_ws/install/can_interface/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",
