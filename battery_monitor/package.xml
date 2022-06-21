@@ -13,6 +13,7 @@
   <test_depend>ament_lint_common</test_depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>std_msgs</depend>
+  <depend>can_interface</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(can_interface REQUIRED)
 include_directories(include)
 
 if(BUILD_TESTING)
@@ -19,7 +20,8 @@ add_executable(meter src/rs232.c src/meter_battery.cpp)
 
 ament_target_dependencies(meter
   rclcpp_lifecycle
-  std_msgs)
+  std_msgs
+  can_interface)
 
 install(TARGETS
   meter

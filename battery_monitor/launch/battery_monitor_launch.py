@@ -3,21 +3,18 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-baudRate = 115200
-portMode = '8N1'
-
 def generate_launch_description():
     deviceName = LaunchConfiguration('device_name')
-    serialPortName = LaunchConfiguration('serial_port_name')
+    canId = LaunchConfiguration('can_id')
 
     deviceNameLaunchArg = DeclareLaunchArgument(
         'device_name',
         default_value = 'agv0'
     )
 
-    serialPortNameLaunchArg = DeclareLaunchArgument(
-        'serial_port_name',
-        default_value = 'ttyS0'
+    canIdLaunchArg = DeclareLaunchArgument(
+        'can_id',
+        default_value = '1'
     )
 
     batteryMeterNode = Node(
@@ -28,14 +25,12 @@ def generate_launch_description():
         output = "screen",
         emulate_tty = True,
         parameters = [
-            {"port_name": serialPortName},
-            {"baud_rate": baudRate},
-            {"port_mode": portMode}
+            {"can_id": canId},
         ]
     )
 
     return LaunchDescription([
         deviceNameLaunchArg,
-        serialPortNameLaunchArg,
+        canIdLaunchArg,
         batteryMeterNode
     ])
