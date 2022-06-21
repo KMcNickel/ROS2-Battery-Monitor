@@ -30,9 +30,9 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
         {
             RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Configuring...");
 
-            this->declare_parameter<std::int32_t>("canId", 1);
+            this->declare_parameter<std::int32_t>("can_id", 1);
 
-            this->get_parameter("canId", canId);
+            this->get_parameter("can_id", canId);
 
             RCLCPP_INFO(rclcpp::get_logger("on_configure"), "Using Can Id: %d", canId);
 
