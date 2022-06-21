@@ -16,7 +16,7 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-add_executable(meter src/rs232.c src/meter_battery.cpp)
+add_executable(meter src/meter_battery.cpp)
 
 ament_target_dependencies(meter
   rclcpp_lifecycle
