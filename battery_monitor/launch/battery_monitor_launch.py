@@ -5,11 +5,17 @@ from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
     deviceName = LaunchConfiguration('device_name')
+    canbusInterfaceName = LaunchConfiguration('canbus_interface_name')
     canId = LaunchConfiguration('can_id')
 
     deviceNameLaunchArg = DeclareLaunchArgument(
         'device_name',
         default_value = 'agv0'
+    )
+
+    canbusInterfaceNameLaunchArg = DeclareLaunchArgument(
+        'canbus_interface_name',
+        default_value = 'can0'
     )
 
     canIdLaunchArg = DeclareLaunchArgument(
@@ -26,11 +32,15 @@ def generate_launch_description():
         emulate_tty = True,
         parameters = [
             {"can_id": canId},
-        ]
+        ],
+        remappings = [
+            ("battery/input/can", ["/", deviceName, "/", canbusInterfaceName, "/output/data"]),
+        ],
     )
 
     return LaunchDescription([
         deviceNameLaunchArg,
+        canbusInterfaceNameLaunchArg,
         canIdLaunchArg,
         batteryMeterNode
     ])
