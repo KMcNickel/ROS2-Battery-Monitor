@@ -144,7 +144,7 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
             switch((messageTypes) messageType)
             {
                 case BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV:
-                    if(message.dlc != 0)
+                    if(message.dlc != 2)
                     {
                         RCLCPP_WARN(rclcpp::get_logger("canDataReceived"), "DLC of %d is not correct for BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV", message.dlc);
                         return;
@@ -153,7 +153,7 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
                     voltagePublisher->publish(outgoingMsg);
                     break;
                 case BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT:
-                    if(message.dlc != 0)
+                    if(message.dlc != 2)
                     {
                         RCLCPP_WARN(rclcpp::get_logger("canDataReceived"), "DLC of %d is not correct for BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT", message.dlc);
                         return;
