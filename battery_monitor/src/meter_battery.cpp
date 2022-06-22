@@ -118,8 +118,8 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
         enum messageTypes
         {
             BATTERY_CAN_MESSAGE_TYPE_NONE = 0,
-            BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV = 1,
-            BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT = 2
+            BATTERY_CAN_MESSAGE_TYPE_SOC_PERCENT = 1,
+            BATTERY_CAN_MESSAGE_TYPE_VOLTAGE_MV = 2
         };
 
         void canDataReceived(const can_interface::msg::CanFrame & message)
@@ -152,7 +152,7 @@ class BatteryMeter : public rclcpp_lifecycle::LifecycleNode
                     outgoingMsg.data = (uint16_t) message.data[0] | ((uint16_t) message.data[1] << 8);
                     voltagePublisher->publish(outgoingMsg);
                     break;
-                case BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT:
+                case BATTERY_CAN_MESSAGE_TYPE_SOC_PERCENT:
                     if(message.dlc != 2)
                     {
                         RCLCPP_WARN(rclcpp::get_logger("canDataReceived"), "DLC of %d is not correct for BATTERY_CAN_MESSAGE_TYPE_SOC_MILLIPERCENT", message.dlc);
